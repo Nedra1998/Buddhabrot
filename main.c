@@ -10,7 +10,7 @@
 
 #define THREAD_COUNT 16
 
-static uint8_t** byte_data = NULL;
+static int32_t** data= NULL;
 
 typedef struct thread_args {
   double dx, dy;
@@ -41,22 +41,23 @@ void* async_row(void* argumnets) {
   thread_args_t* args = argumnets;
   for (uint32_t i = 0; i < args->width; ++i) {
     int iter_n = -1;
-    if ((iter_n = iterate((i * args->dx) - 2.0,
-                                (args->row * args->dy) - 1.0, 10000)) >= 0) {
-      uint32_t id = 6 * i;
-      uint32_t color = rainbow[iter_n % 256];
-      uint16_t red = ((color >> 16) & 0xff) * 0xff;
-      uint16_t green = ((color >> 8) & 0xff) * 0xff;
-      uint16_t blue = ((color)&0xff) * 0xff;
-      /* uint16_t red = 0xffff * 1.0/ret->iter_n; */
-      /* uint16_t green = 0xffff * 1.0/ret->iter_n; */
-      /* uint16_t blue = 0xffff * 1.0/ret->iter_n; */
-      byte_data[args->row][id] = (red >> 8) & 0xff;
-      byte_data[args->row][id + 1] = (red & 0xff);
-      byte_data[args->row][id + 2] = (green >> 8) & 0xff;
-      byte_data[args->row][id + 3] = (green & 0xff);
-      byte_data[args->row][id + 4] = (blue >> 8) & 0xff;
-      byte_data[args->row][id + 5] = (blue & 0xff);
+    if ((iter_n = iterate((i * args->dx) - 2.0000,
+                                (args->row * args->dy) - 1.0000, 10000)) >= 0) {
+      data[args->row][i] = iter_n;
+      /* uint32_t id = 6 * i; */
+      /* uint32_t color = rainbow[iter_n % 256]; */
+      /* uint16_t red = ((color >> 16) & 0xff) * 0xff; */
+      /* uint16_t green = ((color >> 8) & 0xff) * 0xff; */
+      /* uint16_t blue = ((color)&0xff) * 0xff; */
+      /* #<{(| uint16_t red = 0xffff * log(1.0/iter_n); |)}># */
+      /* #<{(| uint16_t green = 0xffff * log(1.0/iter_n); |)}># */
+      /* #<{(| uint16_t blue = 0xffff * log(1.0/iter_n); |)}># */
+      /* byte_data[args->row][id] = (red >> 8) & 0xff; */
+      /* byte_data[args->row][id + 1] = (red & 0xff); */
+      /* byte_data[args->row][id + 2] = (green >> 8) & 0xff; */
+      /* byte_data[args->row][id + 3] = (green & 0xff); */
+      /* byte_data[args->row][id + 4] = (blue >> 8) & 0xff; */
+      /* byte_data[args->row][id + 5] = (blue & 0xff); */
     }
   }
   return NULL;
@@ -115,11 +116,7 @@ bool parse_args(int argc, char* argv[]) {
   return true;
 }
 
-int main(int argc, char* argv[]) {
-  if (!parse_args(argc, argv)) return 0;
-  uint32_t res_x = resolution;
-  /* uint32_t res_y = resolution; */
-  uint32_t res_y = (2.0 / 3.0) * (double)(resolution);
+int save_img(uint32_t off, uint32_t res_x, uint32_t res_y){
   png_structp png =
       png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (!png) {
@@ -132,11 +129,13 @@ int main(int argc, char* argv[]) {
   if (setjmp(png_jmpbuf(png))) {
     return -3;
   }
-  FILE* out = fopen(dest_file, "w");
+  char buff[255];
+  snprintf(buff, 255, "set/%u.png", off);
+  FILE* out = fopen(buff, "w");
   if (!out) {
     return -4;
   }
-  byte_data = (uint8_t**)malloc(res_y * sizeof(uint8_t*));
+  uint8_t** byte_data = (uint8_t**)malloc(res_y * sizeof(uint8_t*));
   if (!byte_data) {
     fclose(out);
     return -5;
@@ -152,13 +151,23 @@ int main(int argc, char* argv[]) {
       return -6;
     }
     memset(byte_data[i], 0x00, 6 * res_x * sizeof(uint8_t));
-  }
-  double dx = 3.0 / (double)res_x;
-  double dy = 2.0 / (double)res_y;
-  printf("\n");
-  for (uint32_t i = 0; i < res_y; ++i) {
-    printf("\033[A>> %u\n", i);
-    push_thread(i, res_x, dx, dy, 1000);
+    for(uint32_t j = 0; j < res_x; ++j){
+      if(data[i][j] < 0) continue;
+      uint32_t id = 6 * j;
+      uint32_t color = rainbow[(data[i][j] + off) % 255];
+      uint16_t red = ((color >> 16) & 0xff) * 0xff;
+      uint16_t green = ((color >> 8) & 0xff) * 0xff;
+      uint16_t blue = ((color)&0xff) * 0xff;
+      /* uint16_t red = 0xffff * log(1.0/iter_n); */
+      /* uint16_t green = 0xffff * log(1.0/iter_n); */
+      /* uint16_t blue = 0xffff * log(1.0/iter_n); */
+      byte_data[i][id] = (red >> 8) & 0xff;
+      byte_data[i][id + 1] = (red & 0xff);
+      byte_data[i][id + 2] = (green >> 8) & 0xff;
+      byte_data[i][id + 3] = (green & 0xff);
+      byte_data[i][id + 4] = (blue >> 8) & 0xff;
+      byte_data[i][id + 5] = (blue & 0xff);
+    }
   }
   png_init_io(png, out);
   png_set_IHDR(png, info, res_x, res_y, 16, PNG_COLOR_TYPE_RGB,
@@ -174,5 +183,45 @@ int main(int argc, char* argv[]) {
   }
   free(byte_data);
   fclose(out);
+  return 0;
+}
+
+int main(int argc, char* argv[]) {
+  if (!parse_args(argc, argv)) return 0;
+  uint32_t res_x = resolution;
+  uint32_t res_y = (2.0 / 3.0) * resolution;
+  /* uint32_t res_y = (9.0 / 16.0) * (double)(resolution); */
+  data = (int32_t**)malloc(res_y * sizeof(int32_t*));
+  if (!data) {
+    return -5;
+  }
+  for (uint32_t i = 0; i < res_y; ++i) {
+    data[i] = (int32_t*)malloc(res_x * sizeof(int32_t));
+    if (!data[i]) {
+      for (uint32_t j = 0; j < i; ++j) {
+        free(data[j]);
+      }
+      free(data);
+      return -6;
+    }
+    for(uint32_t j = 0; j < res_x; ++j){
+      data[i][j] = -1;
+    }
+  }
+  double dx = 3.0 / (double)res_x;
+  double dy = 2.0 / (double)res_y;
+  printf("\n");
+  for (uint32_t i = 0; i < res_y; ++i) {
+    printf("\033[A>> %u\n", i);
+    push_thread(i, res_x, dx, dy, 1000);
+  }
+  join_threads();
+  for(uint32_t i = 0; i < 255; ++i){
+    save_img(i, res_x, res_y);
+  }
+  for (uint32_t i = 0; i < res_y; ++i) {
+    free(data[i]);
+  }
+  free(data);
   return 0;
 }
