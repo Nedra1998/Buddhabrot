@@ -10,22 +10,28 @@
 
 #define THREAD_COUNT 16
 
-static int32_t** data= NULL;
+static int64_t** data = NULL;
 
 typedef struct thread_args {
+  double sx, sy;
   double dx, dy;
-  uint32_t width, row, iter_max;
+  uint32_t width, row;
+  uint64_t iter_max;
 } thread_args_t;
 
 static uint32_t resolution = 5000;
+static double center_x = -0.743643887037158704752191506114774;
+static double center_y = +0.131825904205311970493132056385139;
+static double zoom_level = 1000;
+static uint32_t zoom_steps = 1000;
 static char* dest_file = "out.png";
 static pthread_t threads[THREAD_COUNT];
 static thread_args_t* thread_args[THREAD_COUNT];
 static uint32_t thread_id = 0;
 
-int iterate(double c_re, double c_im, uint32_t iter_max) {
+int iterate(double c_re, double c_im, uint64_t iter_max) {
   double re = 0.0, im = 0.0;
-  for (uint32_t i = 0; i < iter_max; ++i) {
+  for (uint64_t i = 0; i < iter_max; ++i) {
     double re2 = re * re;
     double im2 = im * im;
     if (re2 + im2 >= 4) {
@@ -41,38 +47,28 @@ void* async_row(void* argumnets) {
   thread_args_t* args = argumnets;
   for (uint32_t i = 0; i < args->width; ++i) {
     int iter_n = -1;
-    if ((iter_n = iterate((i * args->dx) - 2.0000,
-                                (args->row * args->dy) - 1.0000, 10000)) >= 0) {
+    if ((iter_n = iterate((i * args->dx) + args->sx,
+                          (args->row * args->dy) + args->sy, args->iter_max)) >=
+        0) {
       data[args->row][i] = iter_n;
-      /* uint32_t id = 6 * i; */
-      /* uint32_t color = rainbow[iter_n % 256]; */
-      /* uint16_t red = ((color >> 16) & 0xff) * 0xff; */
-      /* uint16_t green = ((color >> 8) & 0xff) * 0xff; */
-      /* uint16_t blue = ((color)&0xff) * 0xff; */
-      /* #<{(| uint16_t red = 0xffff * log(1.0/iter_n); |)}># */
-      /* #<{(| uint16_t green = 0xffff * log(1.0/iter_n); |)}># */
-      /* #<{(| uint16_t blue = 0xffff * log(1.0/iter_n); |)}># */
-      /* byte_data[args->row][id] = (red >> 8) & 0xff; */
-      /* byte_data[args->row][id + 1] = (red & 0xff); */
-      /* byte_data[args->row][id + 2] = (green >> 8) & 0xff; */
-      /* byte_data[args->row][id + 3] = (green & 0xff); */
-      /* byte_data[args->row][id + 4] = (blue >> 8) & 0xff; */
-      /* byte_data[args->row][id + 5] = (blue & 0xff); */
     }
   }
   return NULL;
 }
 
-void push_thread(uint32_t row, uint32_t width, double dx, double dy,
-                 uint32_t iter_max) {
+void push_thread(uint32_t row, uint32_t width, double sx, double sy, double dx,
+                 double dy, uint32_t iter_max) {
   if (thread_args[thread_id] != NULL) {
     pthread_join(threads[thread_id], NULL);
     free(thread_args[thread_id]);
+    thread_args[thread_id] = NULL;
   }
   thread_args[thread_id] = (thread_args_t*)malloc(sizeof(thread_args_t));
   thread_args[thread_id]->iter_max = iter_max;
   thread_args[thread_id]->row = row;
   thread_args[thread_id]->width = width;
+  thread_args[thread_id]->sx = sx;
+  thread_args[thread_id]->sy = sy;
   thread_args[thread_id]->dx = dx;
   thread_args[thread_id]->dy = dy;
   pthread_create(&threads[thread_id], NULL, async_row, thread_args[thread_id]);
@@ -84,6 +80,7 @@ void join_threads() {
     if (thread_args[i] != NULL) {
       pthread_join(threads[i], NULL);
       free(thread_args[i]);
+      thread_args[i] = NULL;
     }
   }
 }
@@ -91,6 +88,14 @@ void join_threads() {
 bool is_uint32_t(char* str) {
   for (uint32_t i = 0; i < strlen(str); ++i) {
     if (str[i] > 57 || str[i] < 48) return false;
+  }
+  return true;
+}
+bool is_float(char* str) {
+  for (uint32_t i = 0; i < strlen(str); ++i) {
+    if ((str[i] > 57 || str[i] < 48) && str[i] != 45 && str[i] != 46 &&
+        str[i] != 'e')
+      return false;
   }
   return true;
 }
@@ -103,20 +108,51 @@ bool ends_with(const char* str, const char* suffix) {
 }
 
 bool parse_args(int argc, char* argv[]) {
+  bool res_arg = false, cx_arg = false, cy_arg = false, zl_arg = false,
+       zs_arg = false;
   for (int i = 0; i < argc; ++i) {
     if (is_uint32_t(argv[i])) {
-      resolution = strtoul(argv[i], NULL, 10);
+      if (res_arg == false) {
+        resolution = strtoul(argv[i], NULL, 10);
+        res_arg = true;
+      } else if (zl_arg == false) {
+        zoom_level = strtoul(argv[i], NULL, 10);
+        zl_arg = true;
+      } else if (zs_arg == false) {
+        zoom_steps = strtoul(argv[i], NULL, 10);
+        zs_arg = true;
+      } else if (cx_arg == false) {
+        center_x = atof(argv[i]);
+        cx_arg = true;
+      } else if (cy_arg == false) {
+        center_y = atof(argv[i]);
+        cy_arg = true;
+      }
+    } else if (is_float(argv[i])) {
+      if (zl_arg == false) {
+        zoom_level = atof(argv[i]);
+        zl_arg = true;
+      } else if (cx_arg == false) {
+        center_x = atof(argv[i]);
+        cx_arg = true;
+      } else if (cy_arg == false) {
+        center_y = atof(argv[i]);
+        cy_arg = true;
+      }
     } else if (!strncmp(argv[i], "-h", 2) || !strncmp(argv[i], "--help", 6)) {
       printf("./buddhabrot [--help] [RES] [OUTPUT]\n");
       return false;
     } else if (ends_with(argv[i], ".png")) {
       dest_file = argv[i];
+    }else if (i != 0){
+      printf("Unrecognized argument \"%s\"\n", argv[i]);
+      return false;
     }
   }
   return true;
 }
 
-int save_img(uint32_t off, uint32_t res_x, uint32_t res_y){
+int save_img(uint32_t off, uint32_t res_x, uint32_t res_y) {
   png_structp png =
       png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (!png) {
@@ -151,16 +187,16 @@ int save_img(uint32_t off, uint32_t res_x, uint32_t res_y){
       return -6;
     }
     memset(byte_data[i], 0x00, 6 * res_x * sizeof(uint8_t));
-    for(uint32_t j = 0; j < res_x; ++j){
-      if(data[i][j] < 0) continue;
+    for (uint32_t j = 0; j < res_x; ++j) {
+      if (data[i][j] < 0) continue;
       uint32_t id = 6 * j;
-      uint32_t color = rainbow[(data[i][j] + off) % 255];
-      uint16_t red = ((color >> 16) & 0xff) * 0xff;
-      uint16_t green = ((color >> 8) & 0xff) * 0xff;
-      uint16_t blue = ((color)&0xff) * 0xff;
-      /* uint16_t red = 0xffff * log(1.0/iter_n); */
-      /* uint16_t green = 0xffff * log(1.0/iter_n); */
-      /* uint16_t blue = 0xffff * log(1.0/iter_n); */
+      /* uint32_t color = rainbow[(data[i][j] + off) % 255]; */
+      /* uint16_t red = ((color >> 16) & 0xff) * 0xff; */
+      /* uint16_t green = ((color >> 8) & 0xff) * 0xff; */
+      /* uint16_t blue = ((color)&0xff) * 0xff; */
+      uint16_t red = 0xffff * log(1.0 / data[i][j]);
+      uint16_t green = 0xffff * log(1.0 / data[i][j]);
+      uint16_t blue = 0xffff * log(1.0 / data[i][j]);
       byte_data[i][id] = (red >> 8) & 0xff;
       byte_data[i][id + 1] = (red & 0xff);
       byte_data[i][id + 2] = (green >> 8) & 0xff;
@@ -188,15 +224,17 @@ int save_img(uint32_t off, uint32_t res_x, uint32_t res_y){
 
 int main(int argc, char* argv[]) {
   if (!parse_args(argc, argv)) return 0;
+  printf(">>%lf,%lf<<\n", center_x, center_y);
+  printf(">>%u,%lf,%u<<\n", resolution, zoom_level, zoom_steps);
   uint32_t res_x = resolution;
-  uint32_t res_y = (2.0 / 3.0) * resolution;
-  /* uint32_t res_y = (9.0 / 16.0) * (double)(resolution); */
-  data = (int32_t**)malloc(res_y * sizeof(int32_t*));
+  /* uint32_t res_y = (2.0 / 3.0) * resolution; */
+  uint32_t res_y = (9.0 / 16.0) * resolution;
+  data = (int64_t**)malloc(res_y * sizeof(int64_t*));
   if (!data) {
     return -5;
   }
   for (uint32_t i = 0; i < res_y; ++i) {
-    data[i] = (int32_t*)malloc(res_x * sizeof(int32_t));
+    data[i] = (int64_t*)malloc(res_x * sizeof(int64_t));
     if (!data[i]) {
       for (uint32_t j = 0; j < i; ++j) {
         free(data[j]);
@@ -204,20 +242,34 @@ int main(int argc, char* argv[]) {
       free(data);
       return -6;
     }
-    for(uint32_t j = 0; j < res_x; ++j){
+    for (uint32_t j = 0; j < res_x; ++j) {
       data[i][j] = -1;
     }
   }
-  double dx = 3.0 / (double)res_x;
-  double dy = 2.0 / (double)res_y;
-  printf("\n");
-  for (uint32_t i = 0; i < res_y; ++i) {
-    printf("\033[A>> %u\n", i);
-    push_thread(i, res_x, dx, dy, 1000);
-  }
-  join_threads();
-  for(uint32_t i = 0; i < 255; ++i){
-    save_img(i, res_x, res_y);
+  double dz = log((zoom_level)) / (double)(zoom_steps);
+  for (uint32_t z = 0; z < zoom_steps; ++z) {
+    for (uint32_t i = 0; i < res_y; ++i) {
+      for (uint32_t j = 0; j < res_x; ++j) {
+        data[i][j] = -1;
+      }
+    }
+    double zoom = exp(dz * z);
+    /* double zoom = pow(1.5, (double)(z)); */
+    /* double zoom = pow((double)(z + 1), 2.0); */
+    double dx = (4.0 / zoom) / (double)res_x;
+    double dy = (2.25 / zoom) / (double)res_y;
+    double sx = center_x - (1.5 / zoom);
+    double sy = center_y - (1.0 / zoom);
+    uint64_t iter = 1e-4 * zoom + 1000;
+    printf("Iter: %u/%u\n", z, zoom_steps);
+    printf("  Zoom:     %lf\n", zoom);
+    printf("  Range:   (%e,%e)\n", dx * res_x, dy * res_y);
+    printf("  Max Iter: %lu\n", iter);
+    for (uint32_t i = 0; i < res_y; ++i) {
+      push_thread(i, res_x, sx, sy, dx, dy, iter);
+    }
+    join_threads();
+    save_img(z, res_x, res_y);
   }
   for (uint32_t i = 0; i < res_y; ++i) {
     free(data[i]);
