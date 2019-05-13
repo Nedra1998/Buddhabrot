@@ -190,13 +190,13 @@ int save_img(uint32_t off, uint32_t res_x, uint32_t res_y) {
     for (uint32_t j = 0; j < res_x; ++j) {
       if (data[i][j] < 0) continue;
       uint32_t id = 6 * j;
-      /* uint32_t color = rainbow[(data[i][j] + off) % 255]; */
-      /* uint16_t red = ((color >> 16) & 0xff) * 0xff; */
-      /* uint16_t green = ((color >> 8) & 0xff) * 0xff; */
-      /* uint16_t blue = ((color)&0xff) * 0xff; */
-      uint16_t red = 0xffff * log(1.0 / data[i][j]);
-      uint16_t green = 0xffff * log(1.0 / data[i][j]);
-      uint16_t blue = 0xffff * log(1.0 / data[i][j]);
+      uint32_t color = rainbow[(data[i][j]) % 255];
+      uint16_t red = ((color >> 16) & 0xff) * 0xff;
+      uint16_t green = ((color >> 8) & 0xff) * 0xff;
+      uint16_t blue = ((color)&0xff) * 0xff;
+      /* uint16_t red = 0xffff * log(1.0 / data[i][j]); */
+      /* uint16_t green = 0xffff * log(1.0 / data[i][j]); */
+      /* uint16_t blue = 0xffff * log(1.0 / data[i][j]); */
       byte_data[i][id] = (red >> 8) & 0xff;
       byte_data[i][id + 1] = (red & 0xff);
       byte_data[i][id + 2] = (green >> 8) & 0xff;
@@ -224,8 +224,6 @@ int save_img(uint32_t off, uint32_t res_x, uint32_t res_y) {
 
 int main(int argc, char* argv[]) {
   if (!parse_args(argc, argv)) return 0;
-  printf(">>%lf,%lf<<\n", center_x, center_y);
-  printf(">>%u,%lf,%u<<\n", resolution, zoom_level, zoom_steps);
   uint32_t res_x = resolution;
   /* uint32_t res_y = (2.0 / 3.0) * resolution; */
   uint32_t res_y = (9.0 / 16.0) * resolution;
